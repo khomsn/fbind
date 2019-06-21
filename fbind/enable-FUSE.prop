@@ -1,0 +1,6 @@
+# enable FUSE
+
+ro.sys.sdcardfs=false
+persist.fuse_sdcard=true
+persist.esdfs_sdcard=false
+persist.sys.sdcardfs=force_off

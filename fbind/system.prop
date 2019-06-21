@@ -1,0 +1,2 @@
+# disable ESDFS
+persist.esdfs_sdcard=false
