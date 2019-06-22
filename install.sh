@@ -119,15 +119,6 @@ REPLACE="
 # Enable boot scripts by setting the flags in the config section above.
 ##########################################################################################
 
-print() { grep_prop $1 $TMPDIR/module.prop; }
-
-author=$(print author)
-name=$(print name)
-version=$(print version)
-versionCode=$(print versionCode)
-
-unset -f print
-
 # Set what you want to display when installing your module
 
 print_modname() {
@@ -146,30 +137,50 @@ on_install() {
   #ui_print "- Extracting module files"
   #unzip -o "$ZIPFILE" 'system/*' -d $MODPATH >&2
 
+  $BOOTMODE && pgrep -f "/$MODID -|/${MODID}d.sh" | xargs kill -9 2>/dev/null
   set -euxo pipefail
   trap 'exxit $?' EXIT
 
-  config=/data/adb/$MODID/config.txt
-  local configVer=$(sed -n 's|^versionCode=||p' $config 2>/dev/null || :)
-  termuxSu=/data/data/com.termux/files/usr/bin/su
+  config=/data/media/0/$MODID/config.txt
+  local configVer=$(print versionCode $config)
 
   # extract module files
-  ui_print "- Extracting module files"
-  unzip -o "$ZIPFILE" "$MODID/*" -d $MODPATH/ >&2
-  cp -l $MODPATH/service.sh $MODPATH/post-fs-data.sh
+  ui_print " "
+  ui_print "(i) Extracting module files..."
+  unzip -o "$ZIPFILE" "$MODID/*" -d ${MODPATH%/*}/ >&2
+  ln $MODPATH/service.sh $MODPATH/post-fs-data.sh
   mkdir -p ${config%/*}/info
-  unzip -o "$ZIPFILE" License.md README.md -d ${config%/*}/info/ >&2
+  unzip -o "$ZIPFILE" '*.md' -d ${config%/*}/info/ >&2
 
-  # upgrade config
-  local newConfigVer=$(sed -n 's|^versionCode=||p' $MODPATH/config.txt)
+  # patch/upgrade config
   if [ -f $config ]; then
-    if [ ${configVer:-0} -lt 201905170 ] || [ ${configVer:-0} -gt $newConfigVer ]; then
-      echo >> $config
-      ###
+    if [ ${configVer:-0} -lt 201905110 ] \
+      || [ ${configVer:-0} -gt $(print versionCode $MODPATH/config.txt) ]
+    then
+      rm $config
     else
-      #[ $configVer -lt 201905111 ] \
-        #&& sed -i -e '/CapacityOffset/s/C/c/' -e '/^versionCode=/s/=.*/=201905111/' $config
-      :
+      [ $configVer -lt 201905111 ] \
+        && sed -i -e '/CapacityOffset/s/C/c/' -e '/^versionCode=/s/=.*/=201905111/' $config
+      [ $configVer -lt 201905130 ] \
+        && sed -i -e '/^capacitySync=/s/true/false/' -e '/^versionCode=/s/=.*/=201905130/' $config
+      if [ $configVer -lt 201906020 ]; then
+        echo >> $config
+        grep rebootOnUnplug $MODPATH/config.txt >> $config
+        echo >> $config
+        grep "toggling interval" $MODPATH/config.txt >> $config
+        grep chargingOnOffDelay $MODPATH/config.txt >> $config
+        sed -i '/^versionCode=/s/=.*/=201906020/' $config
+      fi
+      if [ $configVer -lt 201906050 ]; then
+        echo >> $config
+        grep language $MODPATH/config.txt >> $config
+        sed -i '/^versionCode=/s/=.*/=201906050/' $config
+      fi
+      if [ $configVer -lt 201906200 ]; then
+        echo >> $config
+        grep -i wake $MODPATH/config.txt >> $config
+        sed -i '/^versionCode=/s/=.*/=201906200/' $config
+      fi
     fi
   fi
 
@@ -193,39 +204,16 @@ set_permissions() {
   # set_perm  $MODPATH/system/lib/libart.so       0     0       0644
 
   # permissions for executables
-  (cd $MODPATH
-  for file in ./cryptsetup ./*.sh ./$MODID*; do
+  for file in $MODPATH/*.sh; do
     [ -f $file ] && set_perm $file  0  0  0755
-  done)
+  done
 
-  finish_up
-
+  # finishing touches
+  chmod -R 0777 ${config%/*}
+  $BOOTMODE && $MODPATH/service.sh install
 }
 
 # You can add more functions to assist your custom script code
-
-finish_up() {
-
-  chmod -R 0777 ${config%/*}
-
-  # fix termux su PATH
-  if [ -f $termuxSu ] && grep -q '/su:' $termuxSu; then
-    sed -i 's|/su:|:|' $termuxSu
-    magisk --clone-attr ${termuxSu%su}apt $termuxSu
-  fi
-
-  # live upgrade support
-  if $BOOTMODE; then
-    mkdir -p /sbin/.$MODID
-    [ -h /sbin/.$MODID/$MODID ] && rm /sbin/.$MODID/$MODID \
-      || rm -rf /sbin/.$MODID/$MODID 2>/dev/null
-    [[ $MODPATH == /data/adb/modules_update/$MODID ]] \
-      && ln -s $MODPATH /sbin/.$MODID/$MODID \
-      || cp -a $MODPATH /sbin/.$MODID/$MODID
-    ln -fs /sbin/.$MODID/$MODID/$MODID /sbin/$MODID
-  fi
-}
-
 
 cancel() {
   imageless_magisk || unmount_magisk_image
@@ -241,11 +229,14 @@ exxit() {
 
 
 version_info() {
+
   local line=""
   local println=false
 
+  ui_print "- Done"
+
   # a note on untested Magisk versions
-  if [ ${MAGISK_VER/.} -gt 191 ]; then
+  if [ $MAGISK_VER_CODE -gt 19300 ]; then
     ui_print " "
     ui_print "  (i) Note: this Magisk version hasn't been tested by $author!"
     ui_print "    - If you come across any issue, please report."
@@ -265,17 +256,30 @@ version_info() {
   ui_print " "
 
   ui_print "  LINKS"
+  ui_print "    - ACC app: github.com/MatteCarra/AccA/"
+  ui_print "    - Battery University: batteryuniversity.com/learn/article/how_to_prolong_lithium_based_batteries/"
   ui_print "    - Donate: paypal.me/vr25xda/"
   ui_print "    - Facebook page: facebook.com/VR25-at-xda-developers-258150974794782/"
   ui_print "    - Git repository: github.com/VR-25/$MODID/"
   ui_print "    - Telegram channel: t.me/vr25_xda/"
-  #ui_print "    - Telegram group: t.me/${MODID}_magisk/"
+  ui_print "    - Telegram group: t.me/${MODID}_magisk/"
   ui_print "    - Telegram profile: t.me/vr25xda/"
-  ui_print "    - XDA thread: forum.xda-developers.com/apps/magisk/module-magic-folder-binder-t3621814/"
+  ui_print "    - XDA thread: forum.xda-developers.com/apps/magisk/module-magic-charging-switch-cs-v2017-9-t3668427/"
   ui_print " "
 
+  ui_print "(i) Important info: https://bit.ly/2TRqRz0"
+  ui_print " "
   if $BOOTMODE; then
-    ui_print "(i) Ignore the reboot button. You can use $MODID right away."
+    ui_print "(i) Ignore the reboot button."
+    ui_print "- $MODID can be used right now."
+    ui_print "- $MODID daemon is already initializing."
     ui_print " "
   fi
 }
+
+print() { sed -n "s|^$1=||p" ${2:-$TMPDIR/module.prop} 2>/dev/null || :; }
+
+author=$(print author)
+name=$(print name)
+version=$(print version)
+versionCode=$(print versionCode)

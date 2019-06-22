@@ -1,10 +1,10 @@
 # fbind core
 # Copyright (C) 2017-2019, VR25 @ xda-developers
-# License: GPL V3+
+# License: GPLv3+
 
 
 altExtsd=false
-tmpf=/dev/fbind/tmpf
+tmpf=/sbin/.fbind/.temp
 intsd=/data/media/0
 obb=/data/media/obb
 modData=/data/adb/fbind
@@ -177,6 +177,8 @@ extsd_path() {
 
 # mount loop device (loop <.img file> <mount point>)
 loop() {
+  echo "(!) Incomplete implementation"
+  return 0
   wait_storage $@
   [ $? -ne 0 ] && return 1
   if ! is_mounted "$2"; then
@@ -277,4 +279,3 @@ remove_wrapper() {
   . $tmpf
   rm $tmpf
 }
- 

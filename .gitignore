@@ -1,1 +1,4 @@
 _builds
+_resources
+.directory
+*.kate-swp

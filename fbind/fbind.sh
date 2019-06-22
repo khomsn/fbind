@@ -4,68 +4,6 @@
 # License: GPL V3+
 
 
-main() {
-
-  umask 0
-  interactiveMode=true
-  modData=/data/adb/fbind
-  modPath=/system/etc/fbind
-  config=$modData/config.txt
-
-  if [ ! -e $modPath/module.prop ]; then
-    modPath=/sbin/.magisk/img/fbind
-    if [ -e $modPath/module.prop ]; then
-      PATH=/sbin/.magisk/busybox:$PATH
-    else
-      modPath=/sbin/.core/img/fbind
-      PATH=/sbin/.core/busybox:$PATH
-    fi
-  fi
-
-  exxit() {
-    local exitCode=$?
-    echo
-    exit $exitCode
-  }
-  trap exxit EXIT
-
-  # root check
-  echo
-  if ! ls /data/data 1>/dev/null 2>&1; then
-    echo "(!) Must run as root (su)"
-    exit 1
-  fi
-
-  if [ ! -e $modPath/module.prop ]; then
-    echo "(!) modPath not found"
-    exit 1
-  fi
-
-  mkdir -p $modData
-  . $modPath/core.sh
-  apply_config # & handle LUKS
-
-  case $1 in
-    -a|--auto-mount) toggle_auto_mount;;
-    -b|--bind-mount) bind_mount "$2" "$3" 1>/dev/null;;
-    -c|--config) shift; edit $config $@;;
-    -C|--cryptsetup) shift; $modPath/bin/cryptsetup $@;;
-    -f|--fuse) force_fuse;;
-    -h|--help) usage;;
-    -i|--info) info;;
-    -l|--log) shift; edit $modData/logs/fbind-boot*.log $@;;
-    -m|--mount) bind_mount_wrapper "$2";;
-    -M|--move) mv_data_wrapper "$2";;
-    -Mm) fbind -M "$2"; fbind -m "$2";;
-    -r|--readme) shift; edit $modData/info/README.md $@;;
-    -R|--remove) shift; remove_wrapper "$@";;
-    -u|--unmount) unmount_wrapper "$2";;
-    -um|--remount) fbind -u "$2"; fbind -m "$2";;
-    *) main_menu;;
-  esac
-}
-
-
 # move data
 mv_data() {
   if ! is_mounted "$1" && [ -n "$(ls -A "$1" 2>/dev/null)" ]; then
@@ -272,7 +210,7 @@ edit() {
 
 
 force_fuse() {
-  if [ -e $modPath/system.prop ]; then
+  if [ -f $modPath/system.prop ]; then
     mv $modPath/system.prop $modPath/FUSE.prop
     echo "(i) Force FUSE: no"
     echo "- Change takes effect after a reboot."
@@ -475,4 +413,60 @@ read
 }
 
 
-main $@
+umask 0
+interactiveMode=true
+modData=/data/adb/fbind-data
+modPath=/system/etc/fbind
+config=$modData/config.txt
+
+if [ ! -f $modPath/module.prop ]; then
+  modPath=/sbin/.magisk/img/fbind
+  if [ -f $modPath/module.prop ]; then
+    PATH=/sbin/.magisk/busybox:$PATH
+  else
+    modPath=/sbin/.core/img/fbind
+    PATH=/sbin/.core/busybox:$PATH
+  fi
+fi
+
+exxit() {
+  local exitCode=$?
+  echo
+  exit $exitCode
+}
+trap exxit EXIT
+
+# root check
+echo
+if ! ls /data/data 1>/dev/null 2>&1; then
+  echo "(!) Must run as root (su)"
+  exit 1
+fi
+
+if [ ! -f $modPath/module.prop ]; then
+  echo "(!) modPath not found"
+  exit 1
+fi
+
+mkdir -p $modData
+. $modPath/core.sh
+apply_config # & handle LUKS
+
+case $1 in
+  -a|--auto-mount) toggle_auto_mount;;
+  -b|--bind-mount) bind_mount "$2" "$3" 1>/dev/null;;
+  -c|--config) shift; edit $config $@;;
+  -C|--cryptsetup) shift; $modPath/bin/cryptsetup $@;;
+  -f|--fuse) force_fuse;;
+  -h|--help) usage;;
+  -i|--info) info;;
+  -l|--log) shift; edit $modData/logs/fbind-boot*.log $@;;
+  -m|--mount) bind_mount_wrapper "$2";;
+  -M|--move) mv_data_wrapper "$2";;
+  -Mm) fbind -M "$2"; fbind -m "$2";;
+  -r|--readme) shift; edit $modData/info/README.md $@;;
+  -R|--remove) shift; remove_wrapper "$@";;
+  -u|--unmount) unmount_wrapper "$2";;
+  -um|--remount) fbind -u "$2"; fbind -m "$2";;
+  *) main_menu;;
+esac
